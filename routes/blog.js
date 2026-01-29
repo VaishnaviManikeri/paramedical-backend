@@ -166,30 +166,57 @@ router.get('/id/:id', async (req, res) => {
 // @route   POST /api/blogs
 // @desc    Create a new blog
 // @access  Private
+// @route   POST /api/blogs
+// @desc    Create a new blog
+// @access  Private
 router.post('/', upload.single('featuredImage'), async (req, res) => {
     try {
-        const { title, content, category, tags, author, isPublished, metaTitle, metaDescription, seoKeywords } = req.body;
+        console.log('POST /api/blogs called');
+        console.log('Request body:', req.body);
+        console.log('File received:', req.file);
         
-        const blogData = {
+        // Parse stringified data if sent as JSON
+        let blogData;
+        if (typeof req.body === 'string') {
+            blogData = JSON.parse(req.body);
+        } else {
+            blogData = req.body;
+        }
+        
+        const { title, content, category, tags, author, isPublished, metaTitle, metaDescription, seoKeywords } = blogData;
+        
+        // Validate required fields
+        if (!title || !content) {
+            return res.status(400).json({
+                success: false,
+                message: 'Title and content are required'
+            });
+        }
+        
+        const newBlogData = {
             title,
             content,
             category: category || 'General',
-            tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
+            tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim())) : [],
             author: author || 'Admin',
-            isPublished: isPublished !== 'false',
+            isPublished: isPublished !== 'false' && isPublished !== false,
             metaTitle,
             metaDescription
         };
         
         if (seoKeywords) {
-            blogData.seoKeywords = seoKeywords.split(',').map(keyword => keyword.trim());
+            newBlogData.seoKeywords = Array.isArray(seoKeywords) 
+                ? seoKeywords 
+                : seoKeywords.split(',').map(keyword => keyword.trim());
         }
         
         if (req.file) {
-            blogData.featuredImage = `/uploads/blogs/${req.file.filename}`;
+            newBlogData.featuredImage = `/uploads/blogs/${req.file.filename}`;
         }
         
-        const blog = new Blog(blogData);
+        console.log('Creating blog with data:', newBlogData);
+        
+        const blog = new Blog(newBlogData);
         await blog.save();
         
         res.status(201).json({
@@ -207,13 +234,20 @@ router.post('/', upload.single('featuredImage'), async (req, res) => {
             });
         }
         
+        // Handle duplicate slug error
+        if (error.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: 'Blog with this title already exists'
+            });
+        }
+        
         res.status(500).json({
             success: false,
             message: error.message || 'Error creating blog'
         });
     }
 });
-
 // @route   PUT /api/blogs/:id
 // @desc    Update a blog
 // @access  Private
