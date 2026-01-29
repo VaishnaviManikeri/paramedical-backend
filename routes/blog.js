@@ -4,52 +4,60 @@ const upload = require("../middleware/upload");
 
 const router = express.Router();
 
-/* ================= PUBLIC ================= */
-router.get("/", async (req, res, next) => {
+/* ================= GET BLOGS (PUBLIC) ================= */
+router.get("/", async (req, res) => {
   try {
     const blogs = await Blog.find().sort({ createdAt: -1 });
-    res.json(blogs);
-  } catch (err) {
-    next(err);
+    res.status(200).json(blogs);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch blogs" });
   }
 });
 
-/* ================= ADMIN ================= */
-router.get("/all", async (req, res, next) => {
+/* ================= GET BLOGS (ADMIN) ================= */
+router.get("/all", async (req, res) => {
   try {
     const blogs = await Blog.find().sort({ createdAt: -1 });
-    res.json(blogs);
-  } catch (err) {
-    next(err);
+    res.status(200).json(blogs);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch blogs" });
   }
 });
 
 /* ================= CREATE BLOG ================= */
-router.post("/", upload.single("image"), async (req, res, next) => {
+router.post("/", upload.single("image"), async (req, res) => {
   try {
+    const { title, content } = req.body;
+
+    // 🔒 VALIDATION (PREVENTS 500)
+    if (!title || !content) {
+      return res.status(400).json({ message: "Title and content are required" });
+    }
+
     if (!req.file) {
       return res.status(400).json({ message: "Image is required" });
     }
 
     const blog = await Blog.create({
-      title: req.body.title,
-      content: req.body.content,
-      imageUrl: req.file.path   // ✅ SAME AS GALLERY
+      title,
+      content,
+      imageUrl: req.file.path // ✅ SAME AS GALLERY
     });
 
     res.status(201).json(blog);
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    console.error("BLOG CREATE ERROR:", error);
+    res.status(500).json({ message: "Blog creation failed" });
   }
 });
 
 /* ================= DELETE BLOG ================= */
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", async (req, res) => {
   try {
     await Blog.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    next(err);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: "Delete failed" });
   }
 });
 
