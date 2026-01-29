@@ -1,281 +1,64 @@
 const express = require('express');
 const router = express.Router();
 const Blog = require('../models/Blog');
-const { adminAuth } = require('../middleware/auth');
-const upload = require('../middleware/upload');
-const cloudinary = require('../config/cloudinary');
-const streamifier = require('streamifier');
 
-// ========== PUBLIC ROUTES ==========
+/* ================= PUBLIC ================= */
 
-// GET ALL PUBLISHED BLOGS
-router.get('/', async (req, res) => {
-    try {
-        const { 
-            page = 1, 
-            limit = 9, 
-            category, 
-            tag, 
-            featured, 
-            search 
-        } = req.query;
-        
-        const query = { isPublished: true };
-        
-        if (category) query.category = category;
-        if (tag) query.tags = { $in: [tag] };
-        if (featured === 'true') query.isFeatured = true;
-        if (search) {
-            query.$or = [
-                { title: { $regex: search, $options: 'i' } },
-                { excerpt: { $regex: search, $options: 'i' } },
-                { content: { $regex: search, $options: 'i' } }
-            ];
-        }
-        
-        const blogs = await Blog.find(query)
-            .sort({ publishedAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .select('-content -metaTitle -metaDescription -metaKeywords');
-        
-        const total = await Blog.countDocuments(query);
-        
-        res.json({
-            blogs,
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            total
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// GET SINGLE BLOG BY SLUG
-router.get('/:slug', async (req, res) => {
-    try {
-        const blog = await Blog.findOne({ 
-            slug: req.params.slug,
-            isPublished: true 
-        });
-        
-        if (!blog) {
-            return res.status(404).json({ message: 'Blog not found' });
-        }
-        
-        // Increment views
-        blog.views += 1;
-        await blog.save();
-        
-        res.json(blog);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// GET RECENT BLOGS
-router.get('/recent', async (req, res) => {
-    try {
-        const limit = parseInt(req.query.limit) || 4;
-        const blogs = await Blog.find({ isPublished: true })
-            .sort({ publishedAt: -1 })
-            .limit(limit)
-            .select('title slug excerpt featuredImage category publishedAt readTime');
-        
-        res.json(blogs);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// GET CATEGORIES
-router.get('/categories/list', async (req, res) => {
-    try {
-        const categories = await Blog.distinct('category', { isPublished: true });
-        res.json(categories);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// GET TAGS
-router.get('/tags/list', async (req, res) => {
-    try {
-        const tags = await Blog.aggregate([
-            { $match: { isPublished: true } },
-            { $unwind: '$tags' },
-            { $group: { _id: '$tags', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 20 }
-        ]);
-        res.json(tags);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// ========== ADMIN ROUTES ==========
-
-// GET ALL BLOGS (INCLUDING UNPUBLISHED)
-router.get('/admin/all', adminAuth, async (req, res) => {
+// Get all blogs
+router.get('/', async (req, res, next) => {
     try {
         const blogs = await Blog.find().sort({ createdAt: -1 });
         res.json(blogs);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        next(err);
     }
 });
 
-// CREATE BLOG
-router.post('/admin/create', adminAuth, upload.single('featuredImage'), async (req, res) => {
+// Get single blog
+router.get('/:id', async (req, res, next) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ message: 'Featured image is required' });
-        }
+        const blog = await Blog.findById(req.params.id);
+        if (!blog) return res.status(404).json({ message: 'Blog not found' });
+        res.json(blog);
+    } catch (err) {
+        next(err);
+    }
+});
 
-        const { 
-            title, excerpt, content, category, tags, 
-            readTime, isPublished, isFeatured, 
-            metaTitle, metaDescription, metaKeywords 
-        } = req.body;
+/* ================= ADMIN ================= */
 
-        // Process tags
-        const tagsArray = tags ? tags.split(',').map(tag => tag.trim().toLowerCase()) : [];
+// Create blog
+router.post('/', async (req, res, next) => {
+    try {
+        const blog = new Blog(req.body);
+        await blog.save();
+        res.status(201).json(blog);
+    } catch (err) {
+        next(err);
+    }
+});
 
-        // Upload image to Cloudinary
-        const uploadStream = cloudinary.uploader.upload_stream(
-            { folder: 'blogs' },
-            async (error, result) => {
-                if (error) {
-                    console.error('Cloudinary upload error:', error);
-                    return res.status(500).json({ message: error.message });
-                }
-
-                try {
-                    const blog = new Blog({
-                        title,
-                        excerpt,
-                        content,
-                        category: category || 'general',
-                        tags: tagsArray,
-                        readTime: readTime || 3,
-                        isPublished: isPublished === 'true',
-                        isFeatured: isFeatured === 'true',
-                        featuredImage: result.secure_url,
-                        cloudinaryId: result.public_id,
-                        metaTitle,
-                        metaDescription,
-                        metaKeywords: metaKeywords ? metaKeywords.split(',').map(kw => kw.trim()) : [],
-                        publishedAt: new Date()
-                    });
-
-                    const savedBlog = await blog.save();
-                    res.status(201).json(savedBlog);
-                } catch (saveError) {
-                    // Cleanup uploaded image if save fails
-                    await cloudinary.uploader.destroy(result.public_id);
-                    res.status(500).json({ message: saveError.message });
-                }
-            }
+// Update blog
+router.put('/:id', async (req, res, next) => {
+    try {
+        const updated = await Blog.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            { new: true }
         );
-
-        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+        res.json(updated);
     } catch (err) {
-        console.error('Create blog error:', err);
-        res.status(500).json({ message: err.message });
+        next(err);
     }
 });
 
-// UPDATE BLOG
-router.put('/admin/update/:id', adminAuth, upload.single('featuredImage'), async (req, res) => {
+// Delete blog
+router.delete('/:id', async (req, res, next) => {
     try {
-        const blog = await Blog.findById(req.params.id);
-        if (!blog) {
-            return res.status(404).json({ message: 'Blog not found' });
-        }
-
-        const { 
-            title, excerpt, content, category, tags, 
-            readTime, isPublished, isFeatured,
-            metaTitle, metaDescription, metaKeywords 
-        } = req.body;
-
-        // Process tags
-        const tagsArray = tags ? tags.split(',').map(tag => tag.trim().toLowerCase()) : [];
-
-        // Update blog fields
-        blog.title = title || blog.title;
-        blog.excerpt = excerpt || blog.excerpt;
-        blog.content = content || blog.content;
-        blog.category = category || blog.category;
-        blog.tags = tagsArray;
-        blog.readTime = readTime || blog.readTime;
-        blog.isPublished = isPublished === 'true';
-        blog.isFeatured = isFeatured === 'true';
-        blog.metaTitle = metaTitle;
-        blog.metaDescription = metaDescription;
-        blog.metaKeywords = metaKeywords ? metaKeywords.split(',').map(kw => kw.trim()) : [];
-
-        // If new image uploaded
-        if (req.file) {
-            // Delete old image from Cloudinary
-            if (blog.cloudinaryId) {
-                await cloudinary.uploader.destroy(blog.cloudinaryId);
-            }
-
-            // Upload new image
-            const uploadStream = cloudinary.uploader.upload_stream(
-                { folder: 'blogs' },
-                async (error, result) => {
-                    if (error) {
-                        console.error('Cloudinary upload error:', error);
-                        return res.status(500).json({ message: error.message });
-                    }
-
-                    blog.featuredImage = result.secure_url;
-                    blog.cloudinaryId = result.public_id;
-
-                    try {
-                        const updatedBlog = await blog.save();
-                        res.json(updatedBlog);
-                    } catch (saveError) {
-                        // Cleanup uploaded image if save fails
-                        await cloudinary.uploader.destroy(result.public_id);
-                        res.status(500).json({ message: saveError.message });
-                    }
-                }
-            );
-
-            streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
-        } else {
-            // No new image, just save the updates
-            const updatedBlog = await blog.save();
-            res.json(updatedBlog);
-        }
+        await Blog.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Blog deleted' });
     } catch (err) {
-        console.error('Update blog error:', err);
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// DELETE BLOG
-router.delete('/admin/delete/:id', adminAuth, async (req, res) => {
-    try {
-        const blog = await Blog.findById(req.params.id);
-        if (!blog) {
-            return res.status(404).json({ message: 'Blog not found' });
-        }
-
-        // Delete image from Cloudinary
-        if (blog.cloudinaryId) {
-            await cloudinary.uploader.destroy(blog.cloudinaryId);
-        }
-
-        await blog.deleteOne();
-        res.json({ message: 'Blog deleted successfully' });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
+        next(err);
     }
 });
 
