@@ -25,7 +25,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcement'));
 app.use('/api/careers', require('./routes/career'));
-app.use("/api/blogs", require("./routes/blog"));
+app.use('/api/blogs', require('./routes/blog')); // ✅ ADD THIS LINE
 
 // ====================== HEALTH CHECK (RENDER) ======================
 app.get('/', (req, res) => {
