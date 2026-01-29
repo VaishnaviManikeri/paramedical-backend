@@ -1,12 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const Blog = require('../models/Blog');
-const { adminAuth, auth } = require('../middleware/auth');
+const { adminAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const cloudinary = require('../config/cloudinary');
 const streamifier = require('streamifier');
 
-// PUBLIC – GET ALL PUBLISHED BLOGS
+// ========== PUBLIC ROUTES ==========
+
+// GET ALL PUBLISHED BLOGS
 router.get('/', async (req, res) => {
     try {
         const { 
@@ -50,7 +52,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-// PUBLIC – GET SINGLE BLOG BY SLUG
+// GET SINGLE BLOG BY SLUG
 router.get('/:slug', async (req, res) => {
     try {
         const blog = await Blog.findOne({ 
@@ -72,7 +74,7 @@ router.get('/:slug', async (req, res) => {
     }
 });
 
-// PUBLIC – GET RECENT BLOGS (with default limit)
+// GET RECENT BLOGS
 router.get('/recent', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 4;
@@ -87,22 +89,7 @@ router.get('/recent', async (req, res) => {
     }
 });
 
-// PUBLIC – GET RECENT BLOGS WITH SPECIFIC LIMIT
-router.get('/recent/:limit', async (req, res) => {
-    try {
-        const limit = parseInt(req.params.limit) || 4;
-        const blogs = await Blog.find({ isPublished: true })
-            .sort({ publishedAt: -1 })
-            .limit(limit)
-            .select('title slug excerpt featuredImage category publishedAt readTime');
-        
-        res.json(blogs);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// PUBLIC – GET CATEGORIES
+// GET CATEGORIES
 router.get('/categories/list', async (req, res) => {
     try {
         const categories = await Blog.distinct('category', { isPublished: true });
@@ -112,7 +99,7 @@ router.get('/categories/list', async (req, res) => {
     }
 });
 
-// PUBLIC – GET TAGS
+// GET TAGS
 router.get('/tags/list', async (req, res) => {
     try {
         const tags = await Blog.aggregate([
@@ -128,8 +115,10 @@ router.get('/tags/list', async (req, res) => {
     }
 });
 
-// ADMIN – GET ALL BLOGS (INCLUDING UNPUBLISHED)
-router.get('/all', adminAuth, async (req, res) => {
+// ========== ADMIN ROUTES ==========
+
+// GET ALL BLOGS (INCLUDING UNPUBLISHED)
+router.get('/admin/all', adminAuth, async (req, res) => {
     try {
         const blogs = await Blog.find().sort({ createdAt: -1 });
         res.json(blogs);
@@ -138,8 +127,8 @@ router.get('/all', adminAuth, async (req, res) => {
     }
 });
 
-// ADMIN – CREATE BLOG
-router.post('/', adminAuth, upload.single('featuredImage'), async (req, res) => {
+// CREATE BLOG
+router.post('/admin/create', adminAuth, upload.single('featuredImage'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ message: 'Featured image is required' });
@@ -198,8 +187,8 @@ router.post('/', adminAuth, upload.single('featuredImage'), async (req, res) => 
     }
 });
 
-// ADMIN – UPDATE BLOG
-router.put('/:id', adminAuth, upload.single('featuredImage'), async (req, res) => {
+// UPDATE BLOG
+router.put('/admin/update/:id', adminAuth, upload.single('featuredImage'), async (req, res) => {
     try {
         const blog = await Blog.findById(req.params.id);
         if (!blog) {
@@ -270,8 +259,8 @@ router.put('/:id', adminAuth, upload.single('featuredImage'), async (req, res) =
     }
 });
 
-// ADMIN – DELETE BLOG
-router.delete('/:id', adminAuth, async (req, res) => {
+// DELETE BLOG
+router.delete('/admin/delete/:id', adminAuth, async (req, res) => {
     try {
         const blog = await Blog.findById(req.params.id);
         if (!blog) {
