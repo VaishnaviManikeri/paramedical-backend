@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Blog = require('../models/Blog');
+const upload = require('../middleware/upload1');
 
 /* ================= PUBLIC ================= */
-
-// Get all blogs
 router.get('/', async (req, res, next) => {
     try {
         const blogs = await Blog.find().sort({ createdAt: -1 });
@@ -14,11 +13,9 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-// Get single blog
 router.get('/:id', async (req, res, next) => {
     try {
         const blog = await Blog.findById(req.params.id);
-        if (!blog) return res.status(404).json({ message: 'Blog not found' });
         res.json(blog);
     } catch (err) {
         next(err);
@@ -26,11 +23,12 @@ router.get('/:id', async (req, res, next) => {
 });
 
 /* ================= ADMIN ================= */
-
-// Create blog
-router.post('/', async (req, res, next) => {
+router.post('/', upload.single('image'), async (req, res, next) => {
     try {
-        const blog = new Blog(req.body);
+        const blog = new Blog({
+            ...req.body,
+            image: req.file ? req.file.path : ''
+        });
         await blog.save();
         res.status(201).json(blog);
     } catch (err) {
@@ -38,12 +36,14 @@ router.post('/', async (req, res, next) => {
     }
 });
 
-// Update blog
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', upload.single('image'), async (req, res, next) => {
     try {
         const updated = await Blog.findByIdAndUpdate(
             req.params.id,
-            req.body,
+            {
+                ...req.body,
+                ...(req.file && { image: req.file.path })
+            },
             { new: true }
         );
         res.json(updated);
@@ -52,7 +52,6 @@ router.put('/:id', async (req, res, next) => {
     }
 });
 
-// Delete blog
 router.delete('/:id', async (req, res, next) => {
     try {
         await Blog.findByIdAndDelete(req.params.id);
