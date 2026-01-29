@@ -1,30 +1,18 @@
 const multer = require('multer');
 
-// ================= MULTER STORAGE =================
-// Memory storage is best for Cloudinary uploads
 const storage = multer.memoryStorage();
 
-// ================= FILE FILTER =================
 const fileFilter = (req, file, cb) => {
-    const isImage = file.mimetype.startsWith('image/');
-    const isVideo = file.mimetype.startsWith('video/');
-
-    if (isImage || isVideo) {
+    if (file.mimetype.startsWith('image/')) {
         cb(null, true);
     } else {
-        cb(
-            new Error('Only image and video files are allowed (jpg, png, mp4, etc.)'),
-            false
-        );
+        cb(new Error('Only image files are allowed'), false);
     }
 };
 
-// ================= MULTER INSTANCE =================
 const upload = multer({
     storage,
-    limits: {
-        fileSize: 50 * 1024 * 1024 // 50MB max (safe for videos)
-    },
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
     fileFilter
 });
 
