@@ -42,21 +42,25 @@ router.get('/all', async (req, res, next) => {
 
 /* UPDATE BLOG */
 router.put('/:id', upload.single('image'), async (req, res, next) => {
-    try {
-        const updateData = {
-            title: req.body.title,
-            content: req.body.content,
-            status: req.body.status
-        };
+  try {
+    const blog = await Blog.findById(req.params.id);
+    if (!blog) return res.status(404).json({ message: 'Blog not found' });
 
-        if (req.file) updateData.image = req.file.filename;
+    blog.title = req.body.title;
+    blog.content = req.body.content;
+    blog.status = req.body.status;
 
-        const blog = await Blog.findByIdAndUpdate(req.params.id, updateData, { new: true });
-        res.json(blog);
-    } catch (err) {
-        next(err);
+    if (req.file) {
+      blog.image = req.file.filename;
     }
+
+    await blog.save();
+    res.json(blog);
+  } catch (err) {
+    next(err);
+  }
 });
+
 
 /* DELETE BLOG */
 router.delete('/:id', async (req, res, next) => {
