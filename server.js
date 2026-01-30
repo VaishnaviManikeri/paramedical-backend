@@ -30,7 +30,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcement'));
 app.use('/api/careers', require('./routes/career'));
-app.use('/api/blogs', require('./routes/blog')); // ✅ BLOG ROUTE
+app.use('/api/blogs', require('./routes/blogupload'));
 
 // ====================== HEALTH CHECK (RENDER) ======================
 app.get('/', (req, res) => {

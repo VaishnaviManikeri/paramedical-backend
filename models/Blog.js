@@ -1,22 +1,31 @@
 const mongoose = require('mongoose');
 
-const blogSchema = new mongoose.Schema({
+const BlogSchema = new mongoose.Schema(
+  {
     title: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
+      trim: true
+    },
+    author: {
+      type: String,
+      required: true
     },
     content: {
-        type: String,
-        required: true
+      type: String,
+      required: true
     },
+    tags: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
     image: {
-        type: String
-    },
-    status: {
-        type: String,
-        enum: ['draft', 'published'],
-        default: 'published'
+      type: String // image URL
     }
-}, { timestamps: true });
+  },
+  { timestamps: true } // ✅ createdAt & updatedAt
+);
 
-module.exports = mongoose.model('Blog', blogSchema);
+module.exports = mongoose.model('Blog', BlogSchema);
