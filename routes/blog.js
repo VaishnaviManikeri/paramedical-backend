@@ -1,6 +1,6 @@
 const express = require('express');
 const Blog = require('../models/Blog');
-const upload = require('../middleware/upload');
+const upload = require('../middleware/uploadBlog');
 
 const router = express.Router();
 
