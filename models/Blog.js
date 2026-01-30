@@ -34,13 +34,46 @@ const BlogSchema = new mongoose.Schema(
 
 /* =====================================================
    AUTO-GENERATE UNIQUE SLUG FROM TITLE
+   FIXED: Proper error handling in middleware
 ===================================================== */
 BlogSchema.pre('save', function (next) {
-  if (!this.slug) {
-    this.slug =
-      slugify(this.title, { lower: true, strict: true }) +
-      '-' +
-      Date.now();
+  try {
+    // Only generate slug if it doesn't exist
+    if (!this.slug || this.isModified('title')) {
+      // Generate base slug
+      let baseSlug = slugify(this.title, { 
+        lower: true, 
+        strict: true,
+        remove: /[*+~.()'"!:@]/g 
+      });
+      
+      // Add timestamp for uniqueness
+      this.slug = `${baseSlug}-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    console.error('Slug generation error:', error);
+    // If slugify fails, use a fallback
+    this.slug = `blog-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    next();
+  }
+});
+
+/* =====================================================
+   Alternative: Generate slug on create only
+===================================================== */
+BlogSchema.pre('save', function (next) {
+  // Only generate slug on new documents
+  if (this.isNew && !this.slug) {
+    try {
+      const baseSlug = slugify(this.title, { 
+        lower: true, 
+        strict: true 
+      });
+      this.slug = `${baseSlug}-${Date.now()}`;
+    } catch (err) {
+      this.slug = `post-${Date.now()}`;
+    }
   }
   next();
 });
