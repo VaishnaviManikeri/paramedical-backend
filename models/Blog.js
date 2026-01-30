@@ -1,75 +1,29 @@
 const mongoose = require('mongoose');
 
-const BlogSchema = new mongoose.Schema({
+const blogSchema = new mongoose.Schema(
+  {
     title: {
-        type: String,
-        required: [true, 'Title is required'],
-        trim: true
-    },
-    slug: {
-        type: String,
-        unique: true,
-        lowercase: true
+      type: String,
+      required: true,
+      trim: true
     },
     content: {
-        type: String,
-        required: [true, 'Content is required']
-    },
-    excerpt: {
-        type: String,
-        maxlength: 200
-    },
-    featuredImage: {
-        type: String,
-        default: ''
+      type: String,
+      required: true
     },
     author: {
-        type: String,
-        default: 'Admin'
+      type: String,
+      default: 'Admin'
     },
-    category: {
-        type: String,
-        default: 'General'
+    image: {
+      type: String
     },
-    tags: [{
-        type: String
-    }],
-    isPublished: {
-        type: Boolean,
-        default: true
-    },
-    views: {
-        type: Number,
-        default: 0
-    },
-    metaTitle: {
-        type: String
-    },
-    metaDescription: {
-        type: String
-    },
-    seoKeywords: [{
-        type: String
-    }]
-}, {
-    timestamps: true
-});
-
-// Generate slug before saving
-BlogSchema.pre('save', function(next) {
-    if (this.title && !this.slug) {
-        this.slug = this.title
-            .toLowerCase()
-            .replace(/[^\w\s]/gi, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-');
+    published: {
+      type: Boolean,
+      default: true
     }
-    
-    if (this.content && !this.excerpt) {
-        this.excerpt = this.content.substring(0, 200) + '...';
-    }
-    
-    next();
-});
+  },
+  { timestamps: true }
+);
 
-module.exports = mongoose.model('Blog', BlogSchema);
+module.exports = mongoose.model('Blog', blogSchema);
