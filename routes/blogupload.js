@@ -6,10 +6,9 @@ const fs = require('fs');
 const Blog = require('../models/Blog');
 
 /* =========================================================
-   ENSURE UPLOAD DIRECTORY EXISTS (VERY IMPORTANT FOR RENDER)
+   ENSURE UPLOAD DIRECTORY EXISTS
 ========================================================= */
 const uploadDir = path.join(__dirname, '../uploads/blogs');
-
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -18,34 +17,28 @@ if (!fs.existsSync(uploadDir)) {
    MULTER CONFIG
 ========================================================= */
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
+  destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueName + path.extname(file.originalname));
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
   }
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|webp/;
     const ext = allowed.test(path.extname(file.originalname).toLowerCase());
     const mime = allowed.test(file.mimetype);
 
-    if (ext && mime) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
+    if (ext && mime) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
   }
 });
 
 /* =========================================================
-   CREATE BLOG (POST /api/blogs)
-   ❗ DO NOT SET SLUG HERE (MODEL HANDLES IT)
+   CREATE BLOG
 ========================================================= */
 router.post('/', upload.single('image'), async (req, res) => {
   try {
@@ -66,7 +59,7 @@ router.post('/', upload.single('image'), async (req, res) => {
         ? tags.split(',').map(t => t.trim()).filter(Boolean)
         : [],
       image: req.file ? `/uploads/blogs/${req.file.filename}` : null
-      // ✅ slug is AUTO-GENERATED in Blog model
+      // ✅ slug auto-generated in model
     });
 
     await blog.save();
@@ -79,23 +72,22 @@ router.post('/', upload.single('image'), async (req, res) => {
   } catch (error) {
     console.error('BLOG CREATE ERROR:', error);
 
-    // Handle duplicate slug error safely
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: 'Duplicate blog detected. Try a different title.'
+        message: 'Duplicate blog detected'
       });
     }
 
     res.status(500).json({
       success: false,
-      message: error.message || 'Internal Server Error'
+      message: error.message
     });
   }
 });
 
 /* =========================================================
-   GET ALL BLOGS (PUBLIC)
+   GET ALL BLOGS
 ========================================================= */
 router.get('/', async (req, res) => {
   try {
@@ -107,34 +99,12 @@ router.get('/', async (req, res) => {
 });
 
 /* =========================================================
-   GET SINGLE BLOG BY SLUG (RECOMMENDED FOR SEO)
-   /api/blogs/slug/:slug
+   GET BLOG BY SLUG
 ========================================================= */
 router.get('/slug/:slug', async (req, res) => {
   try {
     const blog = await Blog.findOne({ slug: req.params.slug });
-
-    if (!blog) {
-      return res.status(404).json({ message: 'Blog not found' });
-    }
-
-    res.json(blog);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-/* =========================================================
-   GET SINGLE BLOG BY ID (ADMIN USE)
-========================================================= */
-router.get('/:id', async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
-
-    if (!blog) {
-      return res.status(404).json({ message: 'Blog not found' });
-    }
-
+    if (!blog) return res.status(404).json({ message: 'Blog not found' });
     res.json(blog);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -143,7 +113,6 @@ router.get('/:id', async (req, res) => {
 
 /* =========================================================
    UPDATE BLOG
-   ❗ SLUG IS NEVER UPDATED (IMPORTANT)
 ========================================================= */
 router.put('/:id', upload.single('image'), async (req, res) => {
   try {
@@ -156,30 +125,26 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       tags: tags
         ? tags.split(',').map(t => t.trim()).filter(Boolean)
         : []
-      // ❌ slug intentionally NOT updated
     };
 
     if (req.file) {
       updateData.image = `/uploads/blogs/${req.file.filename}`;
     }
 
-    const updatedBlog = await Blog.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true }
-    );
+    const blog = await Blog.findByIdAndUpdate(req.params.id, updateData, {
+      new: true
+    });
 
-    if (!updatedBlog) {
+    if (!blog) {
       return res.status(404).json({ message: 'Blog not found' });
     }
 
     res.json({
       success: true,
       message: 'Blog updated successfully',
-      blog: updatedBlog
+      blog
     });
   } catch (error) {
-    console.error('BLOG UPDATE ERROR:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -190,10 +155,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const blog = await Blog.findByIdAndDelete(req.params.id);
-
-    if (!blog) {
-      return res.status(404).json({ message: 'Blog not found' });
-    }
+    if (!blog) return res.status(404).json({ message: 'Blog not found' });
 
     res.json({
       success: true,
@@ -202,19 +164,6 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-});
-
-/* =========================================================
-   MULTER ERROR HANDLER
-========================================================= */
-router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message?.includes('image')) {
-    return res.status(400).json({
-      success: false,
-      message: err.message
-    });
-  }
-  next(err);
 });
 
 module.exports = router;
