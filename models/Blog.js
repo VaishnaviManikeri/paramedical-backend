@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const slugify = require('slugify');
 
 const BlogSchema = new mongoose.Schema(
   {
@@ -6,6 +7,11 @@ const BlogSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true
+    },
+    slug: {
+      type: String,
+      unique: true,
+      index: true
     },
     author: {
       type: String,
@@ -15,17 +21,28 @@ const BlogSchema = new mongoose.Schema(
       type: String,
       required: true
     },
-    tags: [
-      {
-        type: String,
-        trim: true
-      }
-    ],
+    tags: {
+      type: [String],
+      default: []
+    },
     image: {
-      type: String // image URL
+      type: String
     }
   },
-  { timestamps: true } // ✅ createdAt & updatedAt
+  { timestamps: true }
 );
+
+/* =====================================================
+   AUTO-GENERATE UNIQUE SLUG FROM TITLE
+===================================================== */
+BlogSchema.pre('save', function (next) {
+  if (!this.slug) {
+    this.slug =
+      slugify(this.title, { lower: true, strict: true }) +
+      '-' +
+      Date.now();
+  }
+  next();
+});
 
 module.exports = mongoose.model('Blog', BlogSchema);

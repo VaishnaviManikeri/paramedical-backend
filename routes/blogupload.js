@@ -38,19 +38,19 @@ const upload = multer({
     if (ext && mime) {
       cb(null, true);
     } else {
-      cb(new Error('Only images are allowed'));
+      cb(new Error('Only image files are allowed'));
     }
   }
 });
 
 /* =========================================================
    CREATE BLOG (POST /api/blogs)
+   ❗ DO NOT SET SLUG HERE (MODEL HANDLES IT)
 ========================================================= */
 router.post('/', upload.single('image'), async (req, res) => {
   try {
     const { title, author, content, tags } = req.body;
 
-    // ✅ Validation
     if (!title || !author || !content) {
       return res.status(400).json({
         success: false,
@@ -63,9 +63,10 @@ router.post('/', upload.single('image'), async (req, res) => {
       author: author.trim(),
       content,
       tags: tags
-        ? tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        ? tags.split(',').map(t => t.trim()).filter(Boolean)
         : [],
       image: req.file ? `/uploads/blogs/${req.file.filename}` : null
+      // ✅ slug is AUTO-GENERATED in Blog model
     });
 
     await blog.save();
@@ -77,6 +78,15 @@ router.post('/', upload.single('image'), async (req, res) => {
     });
   } catch (error) {
     console.error('BLOG CREATE ERROR:', error);
+
+    // Handle duplicate slug error safely
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'Duplicate blog detected. Try a different title.'
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: error.message || 'Internal Server Error'
@@ -97,7 +107,25 @@ router.get('/', async (req, res) => {
 });
 
 /* =========================================================
-   GET SINGLE BLOG
+   GET SINGLE BLOG BY SLUG (RECOMMENDED FOR SEO)
+   /api/blogs/slug/:slug
+========================================================= */
+router.get('/slug/:slug', async (req, res) => {
+  try {
+    const blog = await Blog.findOne({ slug: req.params.slug });
+
+    if (!blog) {
+      return res.status(404).json({ message: 'Blog not found' });
+    }
+
+    res.json(blog);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+/* =========================================================
+   GET SINGLE BLOG BY ID (ADMIN USE)
 ========================================================= */
 router.get('/:id', async (req, res) => {
   try {
@@ -115,6 +143,7 @@ router.get('/:id', async (req, res) => {
 
 /* =========================================================
    UPDATE BLOG
+   ❗ SLUG IS NEVER UPDATED (IMPORTANT)
 ========================================================= */
 router.put('/:id', upload.single('image'), async (req, res) => {
   try {
@@ -125,8 +154,9 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       author,
       content,
       tags: tags
-        ? tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        ? tags.split(',').map(t => t.trim()).filter(Boolean)
         : []
+      // ❌ slug intentionally NOT updated
     };
 
     if (req.file) {
@@ -173,8 +203,12 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+/* =========================================================
+   MULTER ERROR HANDLER
+========================================================= */
 router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message.includes("image")) {
+  if (err instanceof multer.MulterError || err.message?.includes('image')) {
     return res.status(400).json({
       success: false,
       message: err.message
