@@ -173,5 +173,14 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+router.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError || err.message.includes("image")) {
+    return res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+  next(err);
+});
 
 module.exports = router;
