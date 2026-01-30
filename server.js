@@ -1,58 +1,70 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const path = require('path');              // ✅ ADDED
 const connectDB = require('./config/db');
 
-// Load environment variables
+// Load env
 dotenv.config();
 
-// Connect MongoDB
+// DB
 connectDB();
 
 const app = express();
 
-// ====================== MIDDLEWARE ======================
+/* ====================== ALLOWED ORIGINS ====================== */
+const allowedOrigins = [
+    'http://localhost:5173',     // Vite
+    'http://localhost:3000',     // React
+    'https://jadhavarparamedicalcollege.com' // Render frontend
+];
+
+/* ====================== CORS CONFIG ====================== */
 app.use(cors({
-    origin: '*', // restrict later if needed
+    origin: function (origin, callback) {
+        // Allow server-to-server & Postman
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('CORS not allowed ❌'));
+        }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
 
+/* ====================== BODY PARSERS ====================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ====================== STATIC FILES ======================
-// ✅ VERY IMPORTANT: expose uploads folder
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// ====================== ROUTES ======================
+/* ====================== ROUTES ====================== */
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcement'));
 app.use('/api/careers', require('./routes/career'));
-app.use('/api/blogs', require('./routes/blogupload'));
 
-// ====================== HEALTH CHECK (RENDER) ======================
+/* ====================== HEALTH CHECK ====================== */
 app.get('/', (req, res) => {
     res.status(200).json({
         status: 'OK',
-        message: 'Server is running successfully 🚀'
+        message: 'Render backend running 🚀'
     });
 });
 
-// ====================== ERROR HANDLER ======================
+/* ====================== ERROR HANDLER ====================== */
 app.use((err, req, res, next) => {
-    console.error('ERROR:', err);
+    console.error('ERROR:', err.message);
 
-    res.status(err.status || 500).json({
+    res.status(500).json({
         success: false,
-        message: err.message || 'Internal Server Error'
+        message: err.message
     });
 });
 
-// ====================== START SERVER ======================
+/* ====================== SERVER ====================== */
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
 });
