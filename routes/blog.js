@@ -1,10 +1,10 @@
 const express = require('express');
 const Blog = require('../models/Blog');
-const upload = require('../middleware/upload'); // SAME upload.js USED BY GALLERY
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
-/* ================= CREATE BLOG ================= */
+/* CREATE BLOG */
 router.post('/', upload.single('image'), async (req, res, next) => {
     try {
         const blog = new Blog({
@@ -20,7 +20,7 @@ router.post('/', upload.single('image'), async (req, res, next) => {
     }
 });
 
-/* ================= GET ALL (PUBLIC) ================= */
+/* GET PUBLIC BLOGS */
 router.get('/', async (req, res, next) => {
     try {
         const blogs = await Blog.find({ status: 'published' }).sort({ createdAt: -1 });
@@ -30,7 +30,7 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-/* ================= GET ALL (ADMIN) ================= */
+/* GET ADMIN BLOGS */
 router.get('/all', async (req, res, next) => {
     try {
         const blogs = await Blog.find().sort({ createdAt: -1 });
@@ -40,7 +40,7 @@ router.get('/all', async (req, res, next) => {
     }
 });
 
-/* ================= UPDATE ================= */
+/* UPDATE BLOG */
 router.put('/:id', upload.single('image'), async (req, res, next) => {
     try {
         const updateData = {
@@ -58,7 +58,7 @@ router.put('/:id', upload.single('image'), async (req, res, next) => {
     }
 });
 
-/* ================= DELETE ================= */
+/* DELETE BLOG */
 router.delete('/:id', async (req, res, next) => {
     try {
         await Blog.findByIdAndDelete(req.params.id);

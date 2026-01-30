@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');              // ✅ ADDED
 const connectDB = require('./config/db');
 
 // Load environment variables
@@ -13,19 +14,23 @@ const app = express();
 
 // ====================== MIDDLEWARE ======================
 app.use(cors({
-    origin: '*', // you can restrict later to frontend domain
+    origin: '*', // restrict later if needed
     credentials: true
 }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ====================== STATIC FILES ======================
+// ✅ VERY IMPORTANT: expose uploads folder
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // ====================== ROUTES ======================
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcement'));
 app.use('/api/careers', require('./routes/career'));
-app.use('/api/blogs', require('./routes/blog'));
+app.use('/api/blogs', require('./routes/blog')); // ✅ BLOG ROUTE
 
 // ====================== HEALTH CHECK (RENDER) ======================
 app.get('/', (req, res) => {
@@ -37,7 +42,7 @@ app.get('/', (req, res) => {
 
 // ====================== ERROR HANDLER ======================
 app.use((err, req, res, next) => {
-    console.error('ERROR:', err.message);
+    console.error('ERROR:', err);
 
     res.status(err.status || 500).json({
         success: false,
