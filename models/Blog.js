@@ -33,15 +33,14 @@ const blogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-/* ================= AUTO SLUG GENERATOR ================= */
-blogSchema.pre('validate', function (next) {
+/* ================= AUTO SLUG GENERATOR (FIXED) ================= */
+blogSchema.pre('validate', function () {
   if (!this.slug && this.title) {
     this.slug = this.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')   // replace special chars
       .replace(/(^-|-$)/g, '');     // trim hyphens
   }
-  next();
 });
 
 module.exports = mongoose.model('Blog', blogSchema);
