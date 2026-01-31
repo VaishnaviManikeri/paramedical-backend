@@ -7,18 +7,23 @@ const blogSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
+
+    slug: {
+      type: String,
+      required: true,
+      unique: true
+    },
+
     excerpt: {
       type: String,
       required: true
     },
+
     content: {
       type: String,
       required: true
     },
-    author: {
-      type: String,
-      default: 'Admin'
-    },
+
     status: {
       type: String,
       enum: ['draft', 'published'],
@@ -27,5 +32,16 @@ const blogSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+/* ================= AUTO SLUG GENERATOR ================= */
+blogSchema.pre('validate', function (next) {
+  if (!this.slug && this.title) {
+    this.slug = this.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')   // replace special chars
+      .replace(/(^-|-$)/g, '');     // trim hyphens
+  }
+  next();
+});
 
 module.exports = mongoose.model('Blog', blogSchema);
