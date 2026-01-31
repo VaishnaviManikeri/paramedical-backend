@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
-const path = require('path');
 
 // Load env
 dotenv.config();
@@ -39,10 +38,6 @@ app.use(cors({
 /* ====================== BODY PARSERS ====================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-/* ====================== STATIC FILES (IMAGES) ====================== */
-// 👉 This is REQUIRED for blog images to load
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 /* ====================== ROUTES ====================== */
 app.use('/api/auth', require('./routes/auth'));

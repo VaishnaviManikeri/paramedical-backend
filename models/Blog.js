@@ -10,6 +10,7 @@ const blogSchema = new mongoose.Schema(
 
     slug: {
       type: String,
+      required: true,
       unique: true
     },
 
@@ -23,27 +24,22 @@ const blogSchema = new mongoose.Schema(
       required: true
     },
 
-    image: {
-      type: String, // image URL
-      required: true
-    },
-
     status: {
       type: String,
       enum: ['draft', 'published'],
       default: 'published'
     }
   },
-  { timestamps: true } // 👉 createdAt & updatedAt
+  { timestamps: true }
 );
 
-/* AUTO SLUG */
+/* ================= AUTO SLUG GENERATOR (FIXED) ================= */
 blogSchema.pre('validate', function () {
   if (!this.slug && this.title) {
     this.slug = this.title
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+      .replace(/[^a-z0-9]+/g, '-')   // replace special chars
+      .replace(/(^-|-$)/g, '');     // trim hyphens
   }
 });
 
