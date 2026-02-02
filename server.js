@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 const connectDB = require('./config/db');
 
 // Load env
@@ -39,6 +40,9 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/* ====================== STATIC FILES ====================== */
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
 /* ====================== ROUTES ====================== */
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
@@ -57,6 +61,16 @@ app.get('/', (req, res) => {
 /* ====================== ERROR HANDLER ====================== */
 app.use((err, req, res, next) => {
     console.error('ERROR:', err.message);
+
+    // Multer error handling
+    if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+                success: false,
+                message: 'File size too large. Maximum 5MB allowed.'
+            });
+        }
+    }
 
     res.status(500).json({
         success: false,

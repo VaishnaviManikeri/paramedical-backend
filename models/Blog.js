@@ -24,10 +24,20 @@ const blogSchema = new mongoose.Schema(
       required: true
     },
 
+    image: {
+      type: String,
+      default: ''
+    },
+
     status: {
       type: String,
       enum: ['draft', 'published'],
       default: 'published'
+    },
+
+    publishedDate: {
+      type: Date,
+      default: Date.now
     }
   },
   { timestamps: true }
