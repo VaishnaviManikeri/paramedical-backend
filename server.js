@@ -4,82 +4,64 @@ const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('./config/db');
 
-// Load env
 dotenv.config();
-
-// DB
 connectDB();
 
 const app = express();
 
-/* ====================== ALLOWED ORIGINS ====================== */
-const allowedOrigins = [
-    'http://localhost:5173',     // Vite
-    'http://localhost:3000',     // React
-    'https://jadhavarparamedicalcollege.com' // Render frontend
-];
+/* ================= CORS ================= */
 
-/* ====================== CORS CONFIG ====================== */
 app.use(cors({
-    origin: function (origin, callback) {
-        // Allow server-to-server & Postman
-        if (!origin) return callback(null, true);
-
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('CORS not allowed ❌'));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+  origin: [
+    'http://localhost:5173', // Vite frontend
+    'http://localhost:3000', // React frontend
+    'https://jadhavarparamedicalcollege.com' // Production frontend
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  credentials: true
 }));
 
-/* ====================== BODY PARSERS ====================== */
+/* ================= BODY PARSER ================= */
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ====================== STATIC FILES ====================== */
+/* ================= STATIC FILES ================= */
+
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
-/* ====================== ROUTES ====================== */
+/* ================= ROUTES ================= */
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcement'));
 app.use('/api/careers', require('./routes/career'));
 app.use('/api/blogs', require('./routes/blog'));
 
-/* ====================== HEALTH CHECK ====================== */
+/* ================= HEALTH CHECK ================= */
+
 app.get('/', (req, res) => {
-    res.status(200).json({
-        status: 'OK',
-        message: 'Render backend running 🚀'
-    });
+  res.json({
+    status: "OK",
+    message: "Backend running 🚀"
+  });
 });
 
-/* ====================== ERROR HANDLER ====================== */
+/* ================= ERROR HANDLER ================= */
+
 app.use((err, req, res, next) => {
-    console.error('ERROR:', err.message);
+  console.error(err.message);
 
-    // Multer error handling
-    if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({
-                success: false,
-                message: 'File size too large. Maximum 5MB allowed.'
-            });
-        }
-    }
-
-    res.status(500).json({
-        success: false,
-        message: err.message
-    });
+  res.status(500).json({
+    success: false,
+    message: err.message
+  });
 });
 
-/* ====================== SERVER ====================== */
+/* ================= SERVER ================= */
+
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
