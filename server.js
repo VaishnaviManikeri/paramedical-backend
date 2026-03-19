@@ -15,7 +15,7 @@ app.use(cors({
   origin: [
     'http://localhost:5173', // Vite frontend
     'http://localhost:3000', // React frontend
-    'https://jadhavarparamedicalcollege.com' // Production frontend
+    'https://jadhavarparamedicalcollege.com', // Production frontend
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   credentials: true
@@ -45,6 +45,12 @@ app.get('/', (req, res) => {
     status: "OK",
     message: "Backend running 🚀"
   });
+});
+
+/* ================= ✅ PING ROUTE (ADDED) ================= */
+
+app.get('/ping', (req, res) => {
+  res.send('✅ Server is alive');
 });
 
 /* ================= ERROR HANDLER ================= */
