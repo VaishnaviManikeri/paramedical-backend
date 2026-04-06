@@ -61,6 +61,7 @@ exports.getBlogsAdmin = async (req, res) => {
 };
 
 /* ================= GET BLOG BY SLUG ================= */
+/* ================= GET BLOG BY SLUG (PUBLIC) ================= */
 exports.getBlogBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
@@ -76,6 +77,7 @@ exports.getBlogBySlug = async (req, res) => {
 
     res.json(blog);
   } catch (err) {
+    console.error('GET BLOG BY SLUG ERROR:', err);
     res.status(500).json({ message: err.message });
   }
 };
