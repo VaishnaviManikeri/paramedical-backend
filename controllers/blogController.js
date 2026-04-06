@@ -5,10 +5,9 @@ const fs = require('fs');
 /* ================= CREATE BLOG ================= */
 exports.createBlog = async (req, res) => {
   try {
-    const { title, excerpt, content, status } = req.body;
+    const { title, excerpt, content, status, author, publishedDate } = req.body;
     let image = '';
 
-    // Handle image upload
     if (req.file) {
       image = `/uploads/blogs/${req.file.filename}`;
     }
@@ -24,8 +23,9 @@ exports.createBlog = async (req, res) => {
       excerpt,
       content,
       image,
-      status,
-      publishedDate: new Date()
+      status: status || 'published',
+      author: author || 'Admin',
+      publishedDate: publishedDate ? new Date(publishedDate) : new Date()
     });
 
     res.status(201).json(blog);
@@ -40,6 +40,7 @@ exports.createBlog = async (req, res) => {
 exports.getBlogs = async (req, res) => {
   try {
     const blogs = await Blog.find({ status: 'published' })
+      .select('title slug excerpt image author readingTime publishedDate createdAt')
       .sort({ publishedDate: -1, createdAt: -1 });
 
     res.json(blogs);
@@ -59,15 +60,33 @@ exports.getBlogsAdmin = async (req, res) => {
   }
 };
 
-/* ================= GET BLOG BY ID ================= */
-exports.getBlogById = async (req, res) => {
+/* ================= GET BLOG BY SLUG ================= */
+exports.getBlogBySlug = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id);
+    const { slug } = req.params;
+    const blog = await Blog.findOne({ slug, status: 'published' });
 
     if (!blog) {
       return res.status(404).json({ message: 'Blog not found' });
     }
 
+    // Increment view count
+    blog.views += 1;
+    await blog.save();
+
+    res.json(blog);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ================= GET BLOG BY ID (Admin) ================= */
+exports.getBlogById = async (req, res) => {
+  try {
+    const blog = await Blog.findById(req.params.id);
+    if (!blog) {
+      return res.status(404).json({ message: 'Blog not found' });
+    }
     res.json(blog);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -85,9 +104,7 @@ exports.updateBlog = async (req, res) => {
 
     const updateData = { ...req.body };
 
-    // Handle new image upload
     if (req.file) {
-      // Delete old image if exists
       if (blog.image) {
         const oldImagePath = path.join(__dirname, '..', 'public', blog.image);
         if (fs.existsSync(oldImagePath)) {
@@ -97,7 +114,6 @@ exports.updateBlog = async (req, res) => {
       updateData.image = `/uploads/blogs/${req.file.filename}`;
     }
 
-    // If publishedDate is being updated
     if (req.body.publishedDate) {
       updateData.publishedDate = new Date(req.body.publishedDate);
     }
@@ -123,7 +139,6 @@ exports.deleteBlog = async (req, res) => {
       return res.status(404).json({ message: 'Blog not found' });
     }
 
-    // Delete associated image
     if (blog.image) {
       const imagePath = path.join(__dirname, '..', 'public', blog.image);
       if (fs.existsSync(imagePath)) {
@@ -132,7 +147,6 @@ exports.deleteBlog = async (req, res) => {
     }
 
     await Blog.findByIdAndDelete(req.params.id);
-
     res.json({ message: 'Blog deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
