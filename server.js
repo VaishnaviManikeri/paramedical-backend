@@ -47,10 +47,23 @@ app.get('/', (req, res) => {
   });
 });
 
-/* ================= ✅ PING ROUTE (ADDED) ================= */
+/* ================= PING ROUTE ================= */
 
 app.get('/ping', (req, res) => {
   res.send('✅ Server is alive');
+});
+
+/* ================= HOSTINGER STATUS API ================= */
+/* This helps you verify backend is running on Hostinger */
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    success: true,
+    server: "Hostinger Backend",
+    status: "Running ✅",
+    timestamp: new Date(),
+    uptime: process.uptime() // seconds
+  });
 });
 
 /* ================= ERROR HANDLER ================= */
@@ -66,7 +79,7 @@ app.use((err, req, res, next) => {
 
 /* ================= SERVER ================= */
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5003;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
