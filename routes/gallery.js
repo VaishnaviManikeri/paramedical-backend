@@ -5,45 +5,58 @@ const { adminAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const cloudinary = require('../config/cloudinary');
 
-// Helper functions for video URL handling
+// ================= HELPER FUNCTIONS =================
+
+// Check if URL is a video URL
 const isVideoUrl = (url) => {
     if (!url) return false;
-    const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.mpeg', '.mpg'];
+    const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.mpeg', '.mpg', '.3gp'];
     const isVideoExtension = videoExtensions.some(ext => url.toLowerCase().includes(ext));
     const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
     const isVimeo = url.includes('vimeo.com');
     const isDrive = url.includes('drive.google.com');
     const isDropbox = url.includes('dropbox.com');
-    return isVideoExtension || isYouTube || isVimeo || isDrive || isDropbox;
+    const isFacebook = url.includes('facebook.com');
+    const isInstagram = url.includes('instagram.com');
+    const isTwitter = url.includes('twitter.com') || url.includes('x.com');
+    return isVideoExtension || isYouTube || isVimeo || isDrive || isDropbox || isFacebook || isInstagram || isTwitter;
 };
 
+// Extract YouTube Video ID
 const getYouTubeVideoId = (url) => {
+    if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
 };
 
+// Get YouTube Embed URL
 const getYouTubeEmbedUrl = (url) => {
     const videoId = getYouTubeVideoId(url);
     return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
 };
 
+// Get YouTube Thumbnail
 const getYouTubeThumbnail = (url) => {
     const videoId = getYouTubeVideoId(url);
     return videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null;
 };
 
+// Extract Vimeo Video ID
 const getVimeoVideoId = (url) => {
+    if (!url) return null;
     const regExp = /vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)(?:$|\/|\?)/;
     const match = url.match(regExp);
     return match ? match[1] : null;
 };
 
+// Get Vimeo Embed URL
 const getVimeoEmbedUrl = (url) => {
     const videoId = getVimeoVideoId(url);
     return videoId ? `https://player.vimeo.com/video/${videoId}` : null;
 };
 
+// Get Vimeo Thumbnail
 const getVimeoThumbnail = async (url) => {
     const videoId = getVimeoVideoId(url);
     if (videoId) {
@@ -60,41 +73,83 @@ const getVimeoThumbnail = async (url) => {
     return null;
 };
 
-// Helper to get embed URL for any video
-const getVideoEmbedUrl = (url) => {
+// Get Generic Embed URL for any video platform
+const getPlatformEmbedUrl = (url) => {
+    if (!url) return null;
+    
+    // YouTube
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
         return getYouTubeEmbedUrl(url);
     }
+    
+    // Vimeo
     if (url.includes('vimeo.com')) {
         return getVimeoEmbedUrl(url);
     }
+    
+    // Google Drive
+    if (url.includes('drive.google.com')) {
+        const fileIdMatch = url.match(/\/d\/(.+?)\//);
+        if (fileIdMatch && fileIdMatch[1]) {
+            return `https://drive.google.com/file/d/${fileIdMatch[1]}/preview`;
+        }
+    }
+    
+    // Dropbox
+    if (url.includes('dropbox.com')) {
+        // Convert dropbox link to raw download link
+        let dropboxUrl = url;
+        if (dropboxUrl.includes('?dl=0')) {
+            dropboxUrl = dropboxUrl.replace('?dl=0', '?raw=1');
+        }
+        return dropboxUrl;
+    }
+    
     // For direct video URLs, return as is
     return url;
 };
 
-// PUBLIC – GET ALL
+// Get platform name for display
+const getPlatformName = (url) => {
+    if (!url) return 'Video';
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
+    if (url.includes('vimeo.com')) return 'Vimeo';
+    if (url.includes('drive.google.com')) return 'Google Drive';
+    if (url.includes('dropbox.com')) return 'Dropbox';
+    if (url.includes('facebook.com')) return 'Facebook';
+    if (url.includes('instagram.com')) return 'Instagram';
+    return 'External';
+};
+
+// ================= PUBLIC ROUTES =================
+
+// GET all gallery items
 router.get('/', async (req, res) => {
     try {
         const items = await Gallery.find().sort({ createdAt: -1 });
         
-        // Process items to add embed URLs and thumbnails
+        // Process items to add embed URLs and thumbnails for frontend
         const processedItems = items.map(item => {
             const itemObj = item.toObject();
             
             if (itemObj.mediaType === 'video') {
+                // Add platform info
+                itemObj.platform = getPlatformName(itemObj.mediaUrl);
+                
                 // Add embed URL for external videos
-                if (itemObj.uploadType === 'url') {
-                    const embedUrl = getVideoEmbedUrl(itemObj.mediaUrl);
-                    if (embedUrl && embedUrl !== itemObj.mediaUrl) {
+                if (itemObj.uploadType === 'url' || itemObj.externalUrl) {
+                    const videoUrl = itemObj.externalUrl || itemObj.mediaUrl;
+                    const embedUrl = getPlatformEmbedUrl(videoUrl);
+                    if (embedUrl && embedUrl !== videoUrl) {
                         itemObj.embedUrl = embedUrl;
                     }
                     
-                    // Add thumbnail
-                    if (itemObj.mediaUrl.includes('youtube.com') || itemObj.mediaUrl.includes('youtu.be')) {
-                        itemObj.thumbnailUrl = getYouTubeThumbnail(itemObj.mediaUrl);
-                    } else if (itemObj.mediaUrl.includes('vimeo.com')) {
-                        // We'll handle this async, but for now use placeholder
-                        itemObj.thumbnailUrl = null;
+                    // Add thumbnail URLs
+                    if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
+                        itemObj.thumbnailUrl = getYouTubeThumbnail(videoUrl);
+                    } else if (videoUrl.includes('vimeo.com')) {
+                        // Will be fetched async, but we can return existing or placeholder
+                        itemObj.thumbnailUrl = itemObj.thumbnailUrl || 'https://via.placeholder.com/400x300?text=Vimeo+Video';
                     }
                 }
                 
@@ -109,6 +164,11 @@ router.get('/', async (req, res) => {
                         ]
                     });
                 }
+                
+                // Ensure thumbnail exists
+                if (!itemObj.thumbnailUrl) {
+                    itemObj.thumbnailUrl = 'https://via.placeholder.com/400x300?text=Video+Thumbnail';
+                }
             }
             
             return itemObj;
@@ -121,7 +181,9 @@ router.get('/', async (req, res) => {
     }
 });
 
-// ADMIN – CREATE
+// ================= ADMIN ROUTES =================
+
+// CREATE gallery item
 router.post('/', adminAuth, upload.single('media'), async (req, res) => {
     try {
         console.log('Received POST request to /api/gallery');
@@ -139,17 +201,16 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
             return res.status(400).json({ message: 'Title is required' });
         }
 
-        // URL upload type
+        // ================= URL UPLOAD TYPE =================
         if (uploadType === 'url') {
             if (!externalUrl || externalUrl.trim() === '') {
                 return res.status(400).json({ message: 'URL is required for URL upload type' });
             }
 
-            // Determine media type
+            // Determine media type from URL
             let determinedMediaType = mediaType;
             if (!determinedMediaType) {
                 determinedMediaType = 'image';
-                // Check if it's a video URL
                 if (isVideoUrl(externalUrl)) {
                     determinedMediaType = 'video';
                 }
@@ -157,21 +218,22 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
 
             let thumbnailUrl = null;
             let embedUrl = null;
+            let platform = null;
             
             // Process video URLs
             if (determinedMediaType === 'video') {
-                embedUrl = getVideoEmbedUrl(externalUrl);
+                platform = getPlatformName(externalUrl);
+                embedUrl = getPlatformEmbedUrl(externalUrl);
                 
                 // Get thumbnail for the video
                 if (externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be')) {
                     thumbnailUrl = getYouTubeThumbnail(externalUrl);
                 } else if (externalUrl.includes('vimeo.com')) {
                     const vimeoThumb = await getVimeoThumbnail(externalUrl);
-                    thumbnailUrl = vimeoThumb;
-                }
-                // For direct video URLs, we'll use a default thumbnail
-                else {
-                    thumbnailUrl = '/video-placeholder.png';
+                    thumbnailUrl = vimeoThumb || 'https://via.placeholder.com/400x300?text=Vimeo+Video';
+                } else {
+                    // For other video URLs, use a default thumbnail
+                    thumbnailUrl = 'https://via.placeholder.com/400x300?text=Video+Thumbnail';
                 }
             }
 
@@ -184,15 +246,16 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
                 mediaType: determinedMediaType,
                 uploadType: 'url',
                 thumbnailUrl: thumbnailUrl,
-                embedUrl: embedUrl
+                embedUrl: embedUrl,
+                platform: platform
             });
 
             const saved = await galleryItem.save();
-            console.log('Gallery item saved (URL):', saved._id);
+            console.log('Gallery item saved (URL):', saved._id, 'Platform:', platform);
             return res.status(201).json(saved);
         }
 
-        // File upload type
+        // ================= FILE UPLOAD TYPE =================
         if (!req.file) {
             return res.status(400).json({ message: 'Please select a file to upload' });
         }
@@ -256,7 +319,8 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
             cloudinaryId: uploadResult.public_id,
             mediaType: isVideo ? 'video' : 'image',
             uploadType: 'upload',
-            thumbnailUrl: thumbnailUrl
+            thumbnailUrl: thumbnailUrl,
+            platform: isVideo ? 'Uploaded Video' : 'Uploaded Image'
         });
 
         const saved = await galleryItem.save();
@@ -272,7 +336,7 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
     }
 });
 
-// ADMIN – UPDATE
+// UPDATE gallery item
 router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
     try {
         const item = await Gallery.findById(req.params.id);
@@ -280,7 +344,7 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
 
         const { title, description, category, mediaType, uploadType, externalUrl } = req.body;
 
-        // URL upload type
+        // ================= URL UPLOAD TYPE =================
         if (uploadType === 'url') {
             if (!externalUrl || externalUrl.trim() === '') {
                 return res.status(400).json({ message: 'URL is required for URL upload type' });
@@ -299,17 +363,21 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
 
             let thumbnailUrl = null;
             let embedUrl = null;
+            let platform = null;
             const determinedMediaType = mediaType || (isVideoUrl(externalUrl) ? 'video' : 'image');
             
             // Process video URLs
             if (determinedMediaType === 'video') {
-                embedUrl = getVideoEmbedUrl(externalUrl);
+                platform = getPlatformName(externalUrl);
+                embedUrl = getPlatformEmbedUrl(externalUrl);
                 
                 if (externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be')) {
                     thumbnailUrl = getYouTubeThumbnail(externalUrl);
                 } else if (externalUrl.includes('vimeo.com')) {
                     const vimeoThumb = await getVimeoThumbnail(externalUrl);
-                    thumbnailUrl = vimeoThumb;
+                    thumbnailUrl = vimeoThumb || 'https://via.placeholder.com/400x300?text=Vimeo+Video';
+                } else {
+                    thumbnailUrl = 'https://via.placeholder.com/400x300?text=Video+Thumbnail';
                 }
             }
 
@@ -323,12 +391,14 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
             item.cloudinaryId = undefined;
             item.thumbnailUrl = thumbnailUrl;
             item.embedUrl = embedUrl;
+            item.platform = platform;
 
             const updated = await item.save();
+            console.log('Gallery item updated (URL):', updated._id);
             return res.json(updated);
         }
 
-        // File upload type - with new file
+        // ================= FILE UPLOAD TYPE =================
         if (req.file) {
             // Delete old Cloudinary file if exists
             if (item.cloudinaryId) {
@@ -393,8 +463,10 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
             item.externalUrl = undefined;
             item.thumbnailUrl = thumbnailUrl;
             item.embedUrl = undefined;
+            item.platform = isVideo ? 'Uploaded Video' : 'Uploaded Image';
 
             const updated = await item.save();
+            console.log('Gallery item updated (Upload):', updated._id);
             res.json(updated);
         } else {
             // Update without changing media
@@ -402,7 +474,13 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
             item.description = description !== undefined ? description.trim() : item.description;
             item.category = category || item.category;
             
-            if (mediaType) item.mediaType = mediaType;
+            // If media type changed, update platform
+            if (mediaType && mediaType !== item.mediaType) {
+                item.mediaType = mediaType;
+                if (mediaType === 'video' && item.externalUrl) {
+                    item.platform = getPlatformName(item.externalUrl);
+                }
+            }
             
             const updated = await item.save();
             res.json(updated);
@@ -414,19 +492,21 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
     }
 });
 
-// ADMIN – DELETE
+// DELETE gallery item
 router.delete('/:id', adminAuth, async (req, res) => {
     try {
         const item = await Gallery.findById(req.params.id);
         if (!item) return res.status(404).json({ message: 'Gallery item not found' });
 
+        // Delete from Cloudinary if it's an uploaded file
         if (item.cloudinaryId) {
             try {
                 const resourceType = item.mediaType === 'video' ? 'video' : 'image';
-                await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
-                console.log('Deleted from Cloudinary:', item.cloudinaryId);
+                const result = await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                console.log('Deleted from Cloudinary:', item.cloudinaryId, result);
             } catch (err) {
                 console.error('Failed to delete from Cloudinary:', err);
+                // Continue with deletion even if Cloudinary fails
             }
         }
 
