@@ -14,11 +14,106 @@ const isVideoUrl = (url) => {
     return isVideoExtension || isYouTubeVimeo;
 };
 
+// Helper to generate video thumbnail from Cloudinary URL
+const generateVideoThumbnail = (videoUrl, cloudinaryId = null) => {
+    if (cloudinaryId) {
+        // If it's a Cloudinary video, generate thumbnail using Cloudinary transformations
+        return cloudinary.url(cloudinaryId, {
+            resource_type: 'video',
+            format: 'jpg',
+            transformation: [
+                { start_offset: '0' },
+                { duration: '1' },
+                { flags: 'layer_apply' }
+            ]
+        });
+    } else if (videoUrl && videoUrl.includes('cloudinary.com')) {
+        // Extract public ID from Cloudinary URL and generate thumbnail
+        const publicIdMatch = videoUrl.match(/\/upload\/(?:v\d+\/)?(.+?)\./);
+        if (publicIdMatch && publicIdMatch[1]) {
+            return cloudinary.url(publicIdMatch[1], {
+                resource_type: 'video',
+                format: 'jpg',
+                transformation: [
+                    { start_offset: '0' },
+                    { duration: '1' }
+                ]
+            });
+        }
+    }
+    // Return null for external videos (YouTube, Vimeo, or direct URLs)
+    return null;
+};
+
+// Helper to get YouTube thumbnail
+const getYouTubeThumbnail = (url) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    if (match && match[2].length === 11) {
+        return `https://img.youtube.com/vi/${match[2]}/maxresdefault.jpg`;
+    }
+    return null;
+};
+
+// Helper to get Vimeo thumbnail
+const getVimeoThumbnail = async (url) => {
+    const regExp = /vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)(?:$|\/|\?)/;
+    const match = url.match(regExp);
+    if (match && match[1]) {
+        try {
+            const response = await fetch(`https://vimeo.com/api/v2/video/${match[1]}.json`);
+            const data = await response.json();
+            if (data && data[0] && data[0].thumbnail_large) {
+                return data[0].thumbnail_large;
+            }
+        } catch (error) {
+            console.error('Failed to fetch Vimeo thumbnail:', error);
+        }
+    }
+    return null;
+};
+
 // PUBLIC – GET ALL
 router.get('/', async (req, res) => {
     try {
         const items = await Gallery.find().sort({ createdAt: -1 });
-        res.json(items);
+        
+        // Add thumbnail URL to each item
+        const itemsWithThumbnails = items.map(item => {
+            const itemObj = item.toObject();
+            
+            // Generate thumbnail based on media type and source
+            if (itemObj.mediaType === 'video') {
+                // Check for YouTube
+                if (itemObj.externalUrl && itemObj.externalUrl.includes('youtube.com')) {
+                    itemObj.thumbnailUrl = getYouTubeThumbnail(itemObj.externalUrl);
+                }
+                // Check for Vimeo
+                else if (itemObj.externalUrl && itemObj.externalUrl.includes('vimeo.com')) {
+                    // We'll fetch this asynchronously, return placeholder for now
+                    itemObj.thumbnailUrl = null;
+                }
+                // Cloudinary video
+                else if (itemObj.cloudinaryId) {
+                    itemObj.thumbnailUrl = generateVideoThumbnail(itemObj.mediaUrl, itemObj.cloudinaryId);
+                }
+                // Direct video URL - try to generate thumbnail if Cloudinary
+                else if (itemObj.mediaUrl && itemObj.mediaUrl.includes('cloudinary.com')) {
+                    itemObj.thumbnailUrl = generateVideoThumbnail(itemObj.mediaUrl);
+                }
+                // For external video URLs without thumbnail support, use a default video thumbnail
+                else {
+                    itemObj.thumbnailUrl = '/video-placeholder.png';
+                }
+            } else {
+                // For images, use the media URL as thumbnail
+                itemObj.thumbnailUrl = itemObj.mediaUrl;
+            }
+            
+            return itemObj;
+        });
+        
+        res.json(itemsWithThumbnails);
     } catch (err) {
         console.error('Error fetching gallery:', err);
         res.status(500).json({ message: err.message });
@@ -55,6 +150,19 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
                 determinedMediaType = isVideoUrl(externalUrl) ? 'video' : 'image';
             }
 
+            let thumbnailUrl = null;
+            
+            // Generate thumbnail for video URLs
+            if (determinedMediaType === 'video') {
+                if (externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be')) {
+                    thumbnailUrl = getYouTubeThumbnail(externalUrl);
+                } else if (externalUrl.includes('vimeo.com')) {
+                    const vimeoThumb = await getVimeoThumbnail(externalUrl);
+                    thumbnailUrl = vimeoThumb;
+                }
+                // For other video URLs, we'll use a default placeholder
+            }
+
             const galleryItem = new Gallery({
                 title: title.trim(),
                 description: description ? description.trim() : '',
@@ -62,7 +170,8 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
                 mediaUrl: externalUrl.trim(),
                 externalUrl: externalUrl.trim(),
                 mediaType: determinedMediaType,
-                uploadType: 'url'
+                uploadType: 'url',
+                thumbnailUrl: thumbnailUrl // Store generated thumbnail
             });
 
             const saved = await galleryItem.save();
@@ -88,11 +197,10 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
                 { 
                     folder: folder,
                     resource_type: resourceType,
-                    chunk_size: 6000000, // 6MB chunks
-                    timeout: 120000, // 2 minutes timeout
-                    eager_async: true, // For videos
+                    chunk_size: 6000000,
+                    timeout: 120000,
                     eager: resourceType === 'video' ? [
-                        { format: 'mp4', transformation: { quality: 'auto' } }
+                        { format: 'jpg', transformation: { start_offset: '0', duration: '1' } } // Generate thumbnail
                     ] : undefined
                 },
                 (error, result) => {
@@ -114,6 +222,20 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
             readableStream.pipe(uploadStream);
         });
 
+        let thumbnailUrl = null;
+        
+        // Generate thumbnail for video
+        if (isVideo && uploadResult.public_id) {
+            thumbnailUrl = cloudinary.url(uploadResult.public_id, {
+                resource_type: 'video',
+                format: 'jpg',
+                transformation: [
+                    { start_offset: '0' },
+                    { duration: '1' }
+                ]
+            });
+        }
+
         const galleryItem = new Gallery({
             title: title.trim(),
             description: description ? description.trim() : '',
@@ -121,7 +243,8 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
             mediaUrl: uploadResult.secure_url,
             cloudinaryId: uploadResult.public_id,
             mediaType: isVideo ? 'video' : 'image',
-            uploadType: 'upload'
+            uploadType: 'upload',
+            thumbnailUrl: thumbnailUrl
         });
 
         const saved = await galleryItem.save();
@@ -162,14 +285,28 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
                 }
             }
 
+            let thumbnailUrl = null;
+            const determinedMediaType = mediaType || (isVideoUrl(externalUrl) ? 'video' : 'image');
+            
+            // Generate thumbnail for video URLs
+            if (determinedMediaType === 'video') {
+                if (externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be')) {
+                    thumbnailUrl = getYouTubeThumbnail(externalUrl);
+                } else if (externalUrl.includes('vimeo.com')) {
+                    const vimeoThumb = await getVimeoThumbnail(externalUrl);
+                    thumbnailUrl = vimeoThumb;
+                }
+            }
+
             item.title = title ? title.trim() : item.title;
             item.description = description !== undefined ? description.trim() : item.description;
             item.category = category || item.category;
             item.mediaUrl = externalUrl.trim();
             item.externalUrl = externalUrl.trim();
-            item.mediaType = mediaType || (isVideoUrl(externalUrl) ? 'video' : 'image');
+            item.mediaType = determinedMediaType;
             item.uploadType = 'url';
             item.cloudinaryId = undefined;
+            item.thumbnailUrl = thumbnailUrl;
 
             const updated = await item.save();
             return res.json(updated);
@@ -199,7 +336,10 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
                         folder: folder,
                         resource_type: resourceType,
                         chunk_size: 6000000,
-                        timeout: 120000
+                        timeout: 120000,
+                        eager: resourceType === 'video' ? [
+                            { format: 'jpg', transformation: { start_offset: '0', duration: '1' } }
+                        ] : undefined
                     },
                     (error, result) => {
                         if (error) reject(error);
@@ -214,6 +354,20 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
                 readableStream.pipe(uploadStream);
             });
 
+            let thumbnailUrl = null;
+            
+            // Generate thumbnail for video
+            if (isVideo && uploadResult.public_id) {
+                thumbnailUrl = cloudinary.url(uploadResult.public_id, {
+                    resource_type: 'video',
+                    format: 'jpg',
+                    transformation: [
+                        { start_offset: '0' },
+                        { duration: '1' }
+                    ]
+                });
+            }
+
             item.title = title ? title.trim() : item.title;
             item.description = description !== undefined ? description.trim() : item.description;
             item.category = category || item.category;
@@ -222,6 +376,7 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
             item.mediaType = isVideo ? 'video' : 'image';
             item.uploadType = 'upload';
             item.externalUrl = undefined;
+            item.thumbnailUrl = thumbnailUrl;
 
             const updated = await item.save();
             res.json(updated);
@@ -248,10 +403,21 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
                         }
                     }
                     
+                    let thumbnailUrl = null;
+                    if (mediaType === 'video' || isVideoUrl(externalUrl)) {
+                        if (externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be')) {
+                            thumbnailUrl = getYouTubeThumbnail(externalUrl);
+                        } else if (externalUrl.includes('vimeo.com')) {
+                            const vimeoThumb = await getVimeoThumbnail(externalUrl);
+                            thumbnailUrl = vimeoThumb;
+                        }
+                    }
+                    
                     item.mediaUrl = externalUrl.trim();
                     item.externalUrl = externalUrl.trim();
                     item.uploadType = 'url';
                     item.cloudinaryId = undefined;
+                    item.thumbnailUrl = thumbnailUrl;
                 } else {
                     return res.status(400).json({ message: 'Media file required for upload type' });
                 }
@@ -259,6 +425,16 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
                 // Update URL for URL type
                 item.mediaUrl = externalUrl.trim();
                 item.externalUrl = externalUrl.trim();
+                
+                // Update thumbnail if it's a video
+                if (item.mediaType === 'video') {
+                    if (externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be')) {
+                        item.thumbnailUrl = getYouTubeThumbnail(externalUrl);
+                    } else if (externalUrl.includes('vimeo.com')) {
+                        const vimeoThumb = await getVimeoThumbnail(externalUrl);
+                        item.thumbnailUrl = vimeoThumb;
+                    }
+                }
             }
             
             if (mediaType) item.mediaType = mediaType;
@@ -287,7 +463,6 @@ router.delete('/:id', adminAuth, async (req, res) => {
                 console.log('Deleted from Cloudinary:', item.cloudinaryId, result);
             } catch (err) {
                 console.error('Failed to delete from Cloudinary:', err);
-                // Continue with deletion even if Cloudinary fails
             }
         }
 
