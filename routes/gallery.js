@@ -17,6 +17,7 @@ router.get('/', async (req, res) => {
         const items = await Gallery.find().sort({ createdAt: -1 });
         res.json(items);
     } catch (err) {
+        console.error('Error fetching gallery:', err);
         res.status(500).json({ message: err.message });
     }
 });
@@ -24,6 +25,10 @@ router.get('/', async (req, res) => {
 // ADMIN – CREATE (with URL option)
 router.post('/', adminAuth, upload.single('media'), async (req, res) => {
     try {
+        console.log('Received POST request to /api/gallery');
+        console.log('Request body:', req.body);
+        console.log('Request file:', req.file);
+        
         const { title, description, category, mediaType, uploadType, externalUrl } = req.body;
 
         // Validate required fields
@@ -37,64 +42,88 @@ router.post('/', adminAuth, upload.single('media'), async (req, res) => {
                 return res.status(400).json({ message: 'URL is required for URL upload type' });
             }
 
+            // Determine media type from URL if not provided
+            let determinedMediaType = mediaType;
+            if (!determinedMediaType) {
+                determinedMediaType = isVideoUrl(externalUrl) ? 'video' : 'image';
+            }
+
             const galleryItem = new Gallery({
                 title,
                 description,
-                category,
+                category: category || 'general',
                 mediaUrl: externalUrl,
                 externalUrl,
-                mediaType,
+                mediaType: determinedMediaType,
                 uploadType: 'url'
             });
 
             const saved = await galleryItem.save();
+            console.log('Gallery item saved:', saved);
             return res.status(201).json(saved);
         }
 
         // File upload type
         if (!req.file) {
-            return res.status(400).json({ message: 'Media file is required for upload type' });
+            return res.status(400).json({ message: 'Media file is required for file upload' });
         }
 
-        // Determine if it's a video
+        // Determine media type from file
         const isVideo = req.file.mimetype.startsWith('video/');
         const folder = isVideo ? 'gallery/videos' : 'gallery/images';
         const resourceType = isVideo ? 'video' : 'image';
+        
+        console.log(`Uploading ${resourceType} to Cloudinary folder: ${folder}`);
 
-        const uploadStream = cloudinary.uploader.upload_stream(
-            { 
-                folder,
-                resource_type: resourceType,
-                chunk_size: 6000000 // 6MB chunks for videos
-            },
-            async (error, result) => {
-                if (error) {
-                    console.error('Cloudinary upload error:', error);
-                    return res.status(500).json({ message: error.message });
-                }
+        // Use Promise wrapper for Cloudinary upload
+        const uploadToCloudinary = () => {
+            return new Promise((resolve, reject) => {
+                const uploadStream = cloudinary.uploader.upload_stream(
+                    { 
+                        folder,
+                        resource_type: resourceType,
+                        chunk_size: 6000000, // 6MB chunks for large files
+                        timeout: 120000 // 2 minute timeout
+                    },
+                    (error, result) => {
+                        if (error) {
+                            console.error('Cloudinary upload error:', error);
+                            reject(error);
+                        } else {
+                            console.log('Cloudinary upload success:', result.secure_url);
+                            resolve(result);
+                        }
+                    }
+                );
+                
+                streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+            });
+        };
 
-                const galleryItem = new Gallery({
-                    title,
-                    description,
-                    category,
-                    mediaUrl: result.secure_url,
-                    cloudinaryId: result.public_id,
-                    mediaType: isVideo ? 'video' : 'image',
-                    uploadType: 'upload'
-                });
+        try {
+            const result = await uploadToCloudinary();
+            
+            const galleryItem = new Gallery({
+                title,
+                description,
+                category: category || 'general',
+                mediaUrl: result.secure_url,
+                cloudinaryId: result.public_id,
+                mediaType: isVideo ? 'video' : 'image',
+                uploadType: 'upload'
+            });
 
-                try {
-                    const saved = await galleryItem.save();
-                    res.status(201).json(saved);
-                } catch (saveError) {
-                    // Cleanup on save error
-                    await cloudinary.uploader.destroy(result.public_id, { resource_type: resourceType });
-                    res.status(500).json({ message: saveError.message });
-                }
-            }
-        );
-
-        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+            const saved = await galleryItem.save();
+            console.log('Gallery item saved with Cloudinary:', saved);
+            res.status(201).json(saved);
+            
+        } catch (cloudinaryError) {
+            console.error('Cloudinary upload failed:', cloudinaryError);
+            return res.status(500).json({ 
+                message: 'Failed to upload to Cloudinary', 
+                error: cloudinaryError.message 
+            });
+        }
 
     } catch (err) {
         console.error('Create error:', err);
@@ -118,8 +147,12 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
 
             // Delete old Cloudinary file if exists
             if (item.cloudinaryId) {
-                const resourceType = item.mediaType === 'video' ? 'video' : 'image';
-                await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                try {
+                    const resourceType = item.mediaType === 'video' ? 'video' : 'image';
+                    await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                } catch (err) {
+                    console.error('Failed to delete old Cloudinary file:', err);
+                }
             }
 
             item.title = title;
@@ -139,46 +172,61 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
         if (req.file) {
             // Delete old Cloudinary file if exists
             if (item.cloudinaryId) {
-                const resourceType = item.mediaType === 'video' ? 'video' : 'image';
-                await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                try {
+                    const resourceType = item.mediaType === 'video' ? 'video' : 'image';
+                    await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                } catch (err) {
+                    console.error('Failed to delete old Cloudinary file:', err);
+                }
             }
 
             const isVideo = req.file.mimetype.startsWith('video/');
             const folder = isVideo ? 'gallery/videos' : 'gallery/images';
             const resourceType = isVideo ? 'video' : 'image';
 
-            const uploadStream = cloudinary.uploader.upload_stream(
-                { 
-                    folder,
-                    resource_type: resourceType,
-                    chunk_size: 6000000
-                },
-                async (error, result) => {
-                    if (error) {
-                        console.error('Cloudinary upload error:', error);
-                        return res.status(500).json({ message: error.message });
-                    }
+            const uploadToCloudinary = () => {
+                return new Promise((resolve, reject) => {
+                    const uploadStream = cloudinary.uploader.upload_stream(
+                        { 
+                            folder,
+                            resource_type: resourceType,
+                            chunk_size: 6000000,
+                            timeout: 120000
+                        },
+                        (error, result) => {
+                            if (error) {
+                                reject(error);
+                            } else {
+                                resolve(result);
+                            }
+                        }
+                    );
+                    
+                    streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+                });
+            };
 
-                    item.title = title || item.title;
-                    item.description = description !== undefined ? description : item.description;
-                    item.category = category || item.category;
-                    item.mediaUrl = result.secure_url;
-                    item.cloudinaryId = result.public_id;
-                    item.mediaType = isVideo ? 'video' : 'image';
-                    item.uploadType = 'upload';
-                    item.externalUrl = undefined;
+            try {
+                const result = await uploadToCloudinary();
 
-                    try {
-                        const updated = await item.save();
-                        res.json(updated);
-                    } catch (saveError) {
-                        await cloudinary.uploader.destroy(result.public_id, { resource_type: resourceType });
-                        res.status(500).json({ message: saveError.message });
-                    }
-                }
-            );
+                item.title = title || item.title;
+                item.description = description !== undefined ? description : item.description;
+                item.category = category || item.category;
+                item.mediaUrl = result.secure_url;
+                item.cloudinaryId = result.public_id;
+                item.mediaType = isVideo ? 'video' : 'image';
+                item.uploadType = 'upload';
+                item.externalUrl = undefined;
 
-            streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+                const updated = await item.save();
+                res.json(updated);
+            } catch (cloudinaryError) {
+                console.error('Cloudinary upload failed:', cloudinaryError);
+                return res.status(500).json({ 
+                    message: 'Failed to upload to Cloudinary', 
+                    error: cloudinaryError.message 
+                });
+            }
         } else {
             // Update without changing media
             item.title = title || item.title;
@@ -194,8 +242,12 @@ router.put('/:id', adminAuth, upload.single('media'), async (req, res) => {
                     
                     // Delete old Cloudinary file if exists
                     if (item.cloudinaryId) {
-                        const resourceType = item.mediaType === 'video' ? 'video' : 'image';
-                        await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                        try {
+                            const resourceType = item.mediaType === 'video' ? 'video' : 'image';
+                            await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                        } catch (err) {
+                            console.error('Failed to delete old Cloudinary file:', err);
+                        }
                     }
                     
                     item.mediaUrl = externalUrl;
@@ -231,14 +283,20 @@ router.delete('/:id', adminAuth, async (req, res) => {
         if (!item) return res.status(404).json({ message: 'Not found' });
 
         if (item.cloudinaryId) {
-            const resourceType = item.mediaType === 'video' ? 'video' : 'image';
-            await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+            try {
+                const resourceType = item.mediaType === 'video' ? 'video' : 'image';
+                await cloudinary.uploader.destroy(item.cloudinaryId, { resource_type: resourceType });
+                console.log('Deleted from Cloudinary:', item.cloudinaryId);
+            } catch (err) {
+                console.error('Failed to delete from Cloudinary:', err);
+            }
         }
 
         await item.deleteOne();
         res.json({ message: 'Deleted successfully' });
 
     } catch (err) {
+        console.error('Delete error:', err);
         res.status(500).json({ message: err.message });
     }
 });
