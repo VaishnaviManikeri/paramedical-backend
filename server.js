@@ -11,15 +11,31 @@ const app = express();
 
 /* ================= CORS ================= */
 
+// ✅ Allowed Origins (IMPORTANT FIX)
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://jadhavarparamedicalcollege.com',
+  'https://www.jadhavarparamedicalcollege.com'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173', // Vite frontend
-    'http://localhost:3000', // React frontend
-    'https://jadhavarparamedicalcollege.com', // Production frontend
-  ],
+  origin: function (origin, callback) {
+    // allow requests with no origin (Postman, mobile apps)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('CORS not allowed'), false);
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   credentials: true
 }));
+
+// ✅ Handle preflight requests (VERY IMPORTANT)
+app.options('*', cors());
 
 /* ================= BODY PARSER ================= */
 
@@ -54,7 +70,6 @@ app.get('/ping', (req, res) => {
 });
 
 /* ================= HOSTINGER STATUS API ================= */
-/* This helps you verify backend is running on Hostinger */
 
 app.get('/api/status', (req, res) => {
   res.json({
@@ -62,7 +77,7 @@ app.get('/api/status', (req, res) => {
     server: "Hostinger Backend",
     status: "Running ✅",
     timestamp: new Date(),
-    uptime: process.uptime() // seconds
+    uptime: process.uptime()
   });
 });
 
