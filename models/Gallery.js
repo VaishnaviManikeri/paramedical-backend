@@ -6,10 +6,13 @@ const GallerySchema = new mongoose.Schema({
     
     // For uploaded files
     mediaUrl: { type: String, required: true },
-    cloudinaryId: { type: String }, // for images only
+    cloudinaryId: { type: String },
     
     // For external URLs
     externalUrl: { type: String },
+    
+    // Thumbnail for videos
+    thumbnailUrl: { type: String },
     
     mediaType: {
         type: String,
