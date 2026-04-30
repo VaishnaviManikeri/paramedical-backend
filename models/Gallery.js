@@ -11,6 +11,9 @@ const GallerySchema = new mongoose.Schema({
     // For external URLs
     externalUrl: { type: String },
     
+    // For video embeds (YouTube, Vimeo, etc.)
+    embedUrl: { type: String },
+    
     // Thumbnail for videos
     thumbnailUrl: { type: String },
     
